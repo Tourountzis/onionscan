@@ -1,11 +1,14 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/s-rah/onionscan/crawldb"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -19,9 +22,10 @@ type OnionScanConfig struct {
 	RescanDuration  time.Duration
 	Scans           []string
 	CrawlConfigs    map[string]CrawlConfig
+	Cookies         []*http.Cookie
 }
 
-func Configure(torProxyAddress string, directoryDepth int, fingerprint bool, timeout int, database string, scans []string, crawlconfigdir string, verbose bool) *OnionScanConfig {
+func Configure(torProxyAddress string, directoryDepth int, fingerprint bool, timeout int, database string, scans []string, crawlconfigdir string, cookie string, verbose bool) *OnionScanConfig {
 	osc := new(OnionScanConfig)
 	osc.TorProxyAddress = torProxyAddress
 	osc.Depth = directoryDepth
@@ -34,12 +38,22 @@ func Configure(torProxyAddress string, directoryDepth int, fingerprint bool, tim
 	osc.Scans = scans
 	osc.CrawlConfigs = make(map[string]CrawlConfig)
 
+	rawRequest := fmt.Sprintf("GET / HTTP/1.0\r\nCookie: %s\r\n\r\n", cookie)
+
+	req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(rawRequest)))
+
+	if err == nil {
+		osc.Cookies = req.Cookies()
+	}
+
 	visit := func(path string, f os.FileInfo, err error) error {
 		if !f.IsDir() {
 			cc, err := LoadCrawlConfig(path)
 			if err == nil {
 				osc.LogInfo(fmt.Sprintf("Loading Crawl Config for %s %v", cc.Onion, cc))
 				osc.CrawlConfigs[cc.Onion] = cc
+			} else {
+				osc.LogError(err)
 			}
 		}
 		return nil
